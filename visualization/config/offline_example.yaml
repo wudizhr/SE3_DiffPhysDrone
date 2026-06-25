@@ -1,0 +1,28 @@
+scene_path: /home/zhr/SE3_Diff/visualization/scenes/example_scene.pt
+# scene_path: /home/zhr/SE3_Diff/visualization/scenes/example_gap.pt
+rollout_path: /home/zhr/SE3_Diff/visualization/rollouts/se3_rollout.npz
+
+# checkpoint_path is optional. When omitted, export_policy_rollout.py uses the
+# newest checkpoints/*/checkpoint_final.pth and reads that folder's config.yaml.
+
+# depth_odom model trained with use_future_collision_samples
+# checkpoint_path: /home/zhr/SE3_Diff/checkpoints/20260621_193322/checkpoint_final.pth
+# mid360_cnn model trained with use_future_collision_samples
+checkpoint_path: /home/zhr/SE3_Diff/checkpoints/20260620_232201/checkpoint_final.pth
+# mid360_cnn model trained without use_future_collision_samples
+# checkpoint_path: /home/zhr/SE3_Diff/checkpoints/20260623_215811/checkpoint_final.pth
+
+
+playback_speed: 1.0
+max_steps: 1000
+frame_id: map
+deterministic_visualization: true
+
+record_mid360: true
+record_mid360_pseudo_image: true
+mid360_points_per_scan: 1440
+mid360_vertical_channels: 12
+mid360_min_range: 0.1
+mid360_max_range: 50.0
+mid360_vertical_min_deg: -7.0
+mid360_vertical_max_deg: 52.0

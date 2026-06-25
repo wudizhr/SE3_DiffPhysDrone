@@ -1,0 +1,48 @@
+env:
+  single: true
+  speed_mtp: 4
+  ground_voxels: true
+  ceiling: false
+  ceiling_height: 3.0
+  random_rotation: true
+  cam_angle: 20
+  fov_x_half_tan: 0.82
+
+train:
+  num_envs: 32
+  num_iters: 50000
+  timesteps: 150
+  yaw_drift: true
+  use_future_collision_samples: false
+
+loss:
+  coef_d_acc: 0.01
+  coef_d_jerk: 0.001
+  coef_collide: 7.5
+  coef_obj_avoidance: 3.0
+
+inference:
+  yaw_target_correction: true
+  ctl_freq: 10
+
+sensor:
+  name: mid360
+  use_odom: true
+  mid360_points_per_scan: 1440
+  mid360_vertical_channels: 12
+  mid360_min_range: 0.1
+  mid360_max_range: 50.0
+  mid360_vertical_min_deg: -7.0
+  mid360_vertical_max_deg: 52.0
+  mid360_theta_min_deg: -90.0
+  mid360_theta_max_deg: 90.0
+  mid360_phi_min_deg: 38.0
+  mid360_phi_max_deg: 97.0
+  mid360_theta_resolution_deg: 3.0
+  mid360_phi_resolution_deg: 5.0
+  mid360_encoding: pseudo_image
+
+model:
+  name: mid360_cnn_model
+  dim_obs: 16
+  action_mode: accel_velocity

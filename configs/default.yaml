@@ -1,0 +1,84 @@
+env:
+  width: 64
+  height: 48
+  grad_decay: 0.4
+  fov_x_half_tan: 0.53
+  single: false
+  gate: false
+  ground_voxels: false
+  ceiling: false
+  ceiling_height: 3.0
+  scaffold: false
+  speed_mtp: 1.0
+  random_rotation: false
+  cam_angle: 10
+  gap: false
+  gap_prob: 0.0
+  n_balls: 30
+  n_voxels: 30
+  n_cyl: 30
+  n_cyl_h: 2
+  n_ground_voxels: 10
+
+train:
+  resume:
+  save_dir: .
+  num_envs: 64
+  batch_size: 64
+  num_iters: 50000
+  lr: 0.001
+  timesteps: 150
+  yaw_drift: false
+  use_future_collision_samples: true
+
+loss:
+  coef_v: 1.0
+  coef_v_pred: 2.0
+  coef_collide: 2.0
+  coef_obj_avoidance: 1.5
+  coef_d_acc: 0.01
+  coef_d_jerk: 0.001
+
+inference:
+  device: cuda
+  no_odom: false
+  yaw_target_correction: false
+  ctl_freq: 15.0
+  max_steps: 450
+  frame_id: map
+  deterministic_visualization: true
+
+model:
+  name: pm_model
+  model_type: pm_model
+  model_class: Model
+  dim_obs:
+  dim_action: 6
+  depth_pool_kernel: 4
+  hidden_dim: 192
+  action_mode: accel_velocity
+
+sensor:
+  name: depth_odom
+  depth_pool_kernel: 4
+  use_depth: true
+  use_odom: true
+  use_flow: false
+  use_mid360: false
+
+paths:
+  scene_path:
+  rollout_path:
+  checkpoint_path:
+
+playback:
+  playback_speed: 1.0
+  publish_prefix: /diffphys
+  body_axis_length: 0.6
+  body_axis_radius: 0.03
+  loop: false
+  exit_on_finish: true
+  frame_id: map
+  rate_hz:
+  ctl_freq:
+  ctl_dt:

@@ -1,0 +1,35 @@
+env:
+  single: true
+  speed_mtp: 4
+  ground_voxels: true
+  ceiling: false
+  ceiling_height: 3.0
+  random_rotation: true
+  cam_angle: 20
+  fov_x_half_tan: 0.82
+
+train:
+  num_envs: 64
+  num_iters: 50000
+  timesteps: 150
+  yaw_drift: true
+  use_future_collision_samples: false
+
+loss:
+  coef_d_acc: 0.01
+  coef_d_jerk: 0.001
+  coef_collide: 7.5
+  coef_obj_avoidance: 3.0
+
+inference:
+  yaw_target_correction: true
+  ctl_freq: 10
+
+sensor:
+  name: depth_odom
+  depth_pool_kernel: 4
+  use_odom: true
+
+model:
+  name: pm_model
+  action_mode: accel_velocity

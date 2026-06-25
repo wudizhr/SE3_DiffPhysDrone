@@ -1,0 +1,52 @@
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Python build outputs
+build/
+dist/
+*.egg-info/
+
+# Native/CUDA build outputs
+*.so
+*.o
+*.cu.o
+
+# Training outputs
+checkpoints/
+runs/
+wandb/
+outputs/
+
+# Generated visualization artifacts
+visualization/rollouts/
+visualization/scenes/
+
+# Local editor/environment files
+.vscode/
+.idea/
+.env
+.env.*
+*.log
+
+# Local OS/tool noise
+.DS_Store
+Thumbs.db
+.cache/
+
+# Test/coverage outputs
+.coverage
+coverage.xml
+htmlcov/
+
+# Profiling and temporary files
+*.prof
+*.ncu-rep
+*.nsys-rep
+*.tmp
+*.bak
+*.swp
