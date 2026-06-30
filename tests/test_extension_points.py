@@ -34,6 +34,34 @@ def test_mid360_cnn_config_declares_sensor_and_model_pair():
     ) / config.sensor.mid360_theta_resolution_deg == 60.0
 
 
+def test_mid360_se3_config_declares_ctbr_backend_pair():
+    from se3diff_config.io import load_experiment_config
+
+    config = load_experiment_config(ROOT / "configs" / "mid360_se3.yaml")
+
+    assert config.sensor.name == "mid360"
+    assert config.model.name == "mid360_se3_model"
+    assert config.model.dim_obs == 16
+    assert config.model.dim_action == 4
+    assert config.model.backend_name == "ctbr"
+    assert config.model.action_mode == "ctbr"
+    assert config.env.quad_mass_randomization == 0.05
+
+
+def test_depth_se3_config_declares_depth_ctbr_backend_pair():
+    from se3diff_config.io import load_experiment_config
+
+    config = load_experiment_config(ROOT / "configs" / "depth_se3.yaml")
+
+    assert config.sensor.name == "depth_odom"
+    assert config.sensor.use_odom is True
+    assert config.model.name == "depth_se3_model"
+    assert config.model.dim_obs == 10
+    assert config.model.dim_action == 4
+    assert config.model.backend_name == "ctbr"
+    assert config.model.action_mode == "ctbr"
+
+
 def test_depth_odom_sensor_builder_declares_observation_shape():
     from sensors import create_observation_builder
     from se3diff_config.schema import SensorConfig
@@ -159,7 +187,9 @@ def test_model_factory_registers_pm_model_and_rejects_unwired_se3_model():
     from se3diff_config.schema import ModelConfig
 
     assert MODEL_REGISTRY["pm_model"] == "model.pm_model.Model"
+    assert MODEL_REGISTRY["depth_se3_model"] == "model.depth_se3_model.Model"
     assert MODEL_REGISTRY["mid360_cnn_model"] == "model.mid360_cnn_model.Model"
+    assert MODEL_REGISTRY["mid360_se3_model"] == "model.mid360_se3_model.Model"
 
     try:
         create_model(ModelConfig(name="se3_model", dim_obs=10, dim_action=4))
@@ -179,6 +209,82 @@ def test_mid360_cnn_model_declares_expected_dict_interface():
     assert "GRUCell" in model_source
     assert "action_fc" in model_source
     assert '"mid360_cnn_model": "model.mid360_cnn_model.Model"' in factory_source
+
+
+def test_depth_se3_model_forward_outputs_ctbr_raw_action():
+    import pytest
+
+    torch = pytest.importorskip("torch")
+    from model import create_model
+    from se3diff_config.schema import ModelConfig
+
+    model = create_model(
+        ModelConfig(
+            name="depth_se3_model",
+            dim_obs=10,
+            dim_action=4,
+            hidden_dim=192,
+            backend_name="ctbr",
+            action_mode="ctbr",
+        )
+    )
+
+    action, values, hidden = model(torch.ones(2, 1, 12, 16), torch.zeros(2, 10))
+
+    assert action.shape == (2, 4)
+    assert values is None
+    assert hidden.shape == (2, 192)
+
+
+def test_depth_se3_model_declares_expected_depth_interface():
+    model_source = (ROOT / "model" / "depth_se3_model.py").read_text()
+    factory_source = (ROOT / "model" / "factory.py").read_text()
+
+    assert "class Model" in model_source
+    assert "def forward(self, x" in model_source
+    assert "GRUCell" in model_source
+    assert "action_fc" in model_source
+    assert '"depth_se3_model": "model.depth_se3_model.Model"' in factory_source
+
+
+def test_mid360_se3_model_forward_outputs_ctbr_raw_action():
+    import pytest
+
+    torch = pytest.importorskip("torch")
+    from model import create_model
+    from se3diff_config.schema import ModelConfig
+
+    model = create_model(
+        ModelConfig(
+            name="mid360_se3_model",
+            dim_obs=16,
+            dim_action=4,
+            hidden_dim=192,
+            backend_name="ctbr",
+            action_mode="ctbr",
+        )
+    )
+    obs = {
+        "mid360_pseudo_image": torch.ones(2, 1, 12, 60),
+        "state": torch.zeros(2, 16),
+    }
+
+    action, values, hidden = model(obs)
+
+    assert action.shape == (2, 4)
+    assert values is None
+    assert hidden.shape == (2, 192)
+
+
+def test_mid360_se3_model_declares_expected_dict_interface():
+    model_source = (ROOT / "model" / "mid360_se3_model.py").read_text()
+    factory_source = (ROOT / "model" / "factory.py").read_text()
+
+    assert "class Model" in model_source
+    assert "mid360_pseudo_image" in model_source
+    assert "GRUCell" in model_source
+    assert "action_fc" in model_source
+    assert '"mid360_se3_model": "model.mid360_se3_model.Model"' in factory_source
 
 
 def test_mid360_observation_builder_can_render_env_observation_dict():

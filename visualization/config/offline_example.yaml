@@ -1,5 +1,7 @@
-scene_path: /home/zhr/SE3_Diff/visualization/scenes/example_scene.pt
-# scene_path: /home/zhr/SE3_Diff/visualization/scenes/example_gap.pt
+# scene_path: /home/zhr/SE3_Diff/visualization/scenes/example_scene.pt
+scene_path: /home/zhr/SE3_Diff/visualization/scenes/example_gap.pt
+# scene_path: /home/zhr/SE3_Diff/visualization/scenes/example_empty.pt
+# scene_path: /home/zhr/SE3_Diff/visualization/scenes/example_cyl.pt
 rollout_path: /home/zhr/SE3_Diff/visualization/rollouts/se3_rollout.npz
 
 # checkpoint_path is optional. When omitted, export_policy_rollout.py uses the
@@ -8,11 +10,17 @@ rollout_path: /home/zhr/SE3_Diff/visualization/rollouts/se3_rollout.npz
 # depth_odom model trained with use_future_collision_samples
 # checkpoint_path: /home/zhr/SE3_Diff/checkpoints/20260621_193322/checkpoint_final.pth
 # mid360_cnn model trained with use_future_collision_samples
-checkpoint_path: /home/zhr/SE3_Diff/checkpoints/20260620_232201/checkpoint_final.pth
+# checkpoint_path: /home/zhr/SE3_Diff/checkpoints/20260620_232201/checkpoint_final.pth
 # mid360_cnn model trained without use_future_collision_samples
 # checkpoint_path: /home/zhr/SE3_Diff/checkpoints/20260623_215811/checkpoint_final.pth
 
+# checkpoint_path: /home/zhr/SE3_Diff/checkpoints/20260628_181709/checkpoint0000.pth
+# checkpoint_path: /home/zhr/SE3_Diff/checkpoints/20260628_185932/checkpoint_final.pth
 
+# checkpoint_path: /home/zhr/SE3_Diff/checkpoints/20260629_005531/checkpoint0001.pth
+# checkpoint_path: /home/zhr/SE3_Diff/checkpoints/20260629_143102/checkpoint0001.pth
+
+# checkpoint_path: /home/zhr/SE3_Diff/checkpoints/20260628_113150/checkpoint_final.pth
 playback_speed: 1.0
 max_steps: 1000
 frame_id: map

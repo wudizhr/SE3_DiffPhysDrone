@@ -1,0 +1,100 @@
+env:
+  single: true
+  speed_mtp: 2
+  ground_voxels: true
+  ceiling: false
+  ceiling_height: 6.0
+  random_rotation: true
+  cam_angle: 20
+  fov_x_half_tan: 0.82
+  quad_mass: 1.0
+  quad_mass_randomization: 0.05
+  ctbr_body_rate_limit: 8.0
+  ctbr_thrust_min: 0.0
+  ctbr_thrust_max: 30.0
+  ctbr_omega_time_constant: 0.03
+  ctbr_thrust_time_constant: 0.05
+  ctbr_linear_drag: 0.0
+
+  n_balls: 20
+  n_voxels: 20
+  n_cyl: 30
+  n_cyl_h: 2
+  n_ground_voxels: 10
+  obstacle_curriculum:
+    enabled: true
+    start_iter: 3000
+    end_iter: 12000
+    start_counts:
+      n_balls: 0
+      n_voxels: 0
+      n_cyl: 0
+      n_cyl_h: 0
+      n_ground_voxels: 0
+
+train:
+  num_envs: 32
+  num_iters: 20000
+  timesteps: 150
+  yaw_drift: true
+  use_future_collision_samples: false
+
+loss:
+  terms:
+    velocity_tracking:
+      weight: 1.0
+      enabled: true
+    object_avoidance:
+      weight: 1.0
+      enabled: true
+      curriculum:
+        start_weight: 0.05
+        end_weight: 3.0
+        start_iter: 5000
+        end_iter: 20000
+    collision:
+      weight: 3.0
+      enabled: true
+      curriculum:
+        start_weight: 0.05
+        end_weight: 7.5
+        start_iter: 7000
+        end_iter: 20000
+    jerk:
+      weight: 0.01
+      enabled: true
+    yaw_alignment:
+      weight: 1.0
+      enabled: true
+    target_yaw_alignment:
+      weight: 1.0
+      enabled: true
+    thrust_regularization:
+      weight: 0.5
+      enabled: true
+    ctbr_smoothness:
+      weight: 0.3
+      enabled: true
+
+    velocity_prediction:
+      weight: 2.0
+      enabled: false
+    action_l2:
+      weight: 0.01
+      enabled: false
+
+inference:
+  yaw_target_correction: true
+  ctl_freq: 15
+
+sensor:
+  name: depth_odom
+  depth_pool_kernel: 4
+  use_odom: true
+
+model:
+  name: depth_se3_model
+  dim_obs: 10
+  dim_action: 4
+  backend_name: ctbr
+  action_mode: ctbr

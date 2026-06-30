@@ -107,6 +107,41 @@ std::vector<torch::Tensor> run_backward_cuda(
     float grad_decay,
     float ctl_dt);
 
+std::vector<torch::Tensor> run_ctbr_forward_cuda(
+    torch::Tensor R,
+    torch::Tensor omega,
+    torch::Tensor collective_thrust,
+    torch::Tensor thrust_cmd,
+    torch::Tensor omega_cmd,
+    torch::Tensor mass,
+    torch::Tensor dg,
+    torch::Tensor p,
+    torch::Tensor v,
+    torch::Tensor v_wind,
+    torch::Tensor a,
+    float ctl_dt,
+    float omega_time_constant,
+    float thrust_time_constant,
+    float linear_drag);
+
+std::vector<torch::Tensor> run_ctbr_backward_cuda(
+    torch::Tensor R,
+    torch::Tensor omega_next,
+    torch::Tensor collective_thrust_next,
+    torch::Tensor mass,
+    torch::Tensor v,
+    torch::Tensor _d_R_next,
+    torch::Tensor _d_omega_next,
+    torch::Tensor _d_collective_thrust_next,
+    torch::Tensor d_p_next,
+    torch::Tensor d_v_next,
+    torch::Tensor _d_a_next,
+    float grad_decay,
+    float ctl_dt,
+    float omega_time_constant,
+    float thrust_time_constant,
+    float linear_drag);
+
 // C++ interface
 
 // // NOTE: AT_ASSERT has become AT_CHECK on master after 0.4.
@@ -196,5 +231,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("update_state_vec", &update_state_vec_cuda, "update_state_vec (CUDA)");
   m.def("run_forward", &run_forward_cuda, "run_forward_cuda (CUDA)");
   m.def("run_backward", &run_backward_cuda, "run_backward_cuda (CUDA)");
+  m.def("run_ctbr_forward", &run_ctbr_forward_cuda, "run_ctbr_forward_cuda (CUDA)");
+  m.def("run_ctbr_backward", &run_ctbr_backward_cuda, "run_ctbr_backward_cuda (CUDA)");
   m.def("rerender_backward", &rerender_backward_cuda, "rerender_backward_cuda (CUDA)");
 }

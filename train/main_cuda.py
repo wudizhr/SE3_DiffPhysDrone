@@ -14,12 +14,13 @@ if str(SRC) not in sys.path:
 
 from datetime import datetime
 import yaml
-from train.loss import compute_training_loss
+from train.loss import LossContext, build_loss_registry
 from train.config_args import parse_train_args
 from se3diff_config.env_factory import create_env
 from se3diff_config.io import config_to_flat_args, config_to_yaml_dict
 from sensors import create_observation_builder
 from control import create_action_adapter
+from env.dynamics import create_dynamics_backend
 
 
 # 主训练脚本：在 CUDA 批量环境中 rollout 无人机轨迹，
@@ -70,6 +71,17 @@ def build_policy_state(env, target_v_raw, use_odom, *, full_attitude: bool = Fal
     return R, state, local_v, target_v
 
 
+def unpack_model_output(output, previous_h):
+    if not isinstance(output, tuple):
+        raise TypeError("policy model must return a tuple")
+    if len(output) == 3:
+        return output
+    if len(output) == 2:
+        action, h = output
+        return action, None, h
+    raise ValueError(f"policy model returned {len(output)} values, expected 2 or 3")
+
+
 
 def main():
     from matplotlib import pyplot as plt
@@ -101,6 +113,15 @@ def main():
     model = create_model(config.model)
     model = model.to(device)
     action_adapter = create_action_adapter(config.model.action_mode)
+    dynamics_backend = create_dynamics_backend(config.model.backend_name)
+    loss_registry = build_loss_registry(config.loss)
+    # Heavy histories such as depth, pseudo images, or point clouds should be
+    # collected only when a loss term declares them here.
+    required_loss_history = loss_registry.required_history()
+    supported_extra_loss_history = {"depth", "mid360_pseudo_image", "hidden"}
+    unsupported_loss_history = required_loss_history - supported_extra_loss_history
+    if unsupported_loss_history:
+        raise ValueError(f"Unsupported loss history requested: {sorted(unsupported_loss_history)}")
     depth_pool_kernel = observation_builder.depth_pool_kernel
     config.model.model_class = model.__class__.__name__
     config.model.dim_obs = dim_obs
@@ -112,6 +133,7 @@ def main():
         yaml.safe_dump({
             'model_type': config.model.model_type,
             'model_class': model.__class__.__name__,
+            'backend_name': config.model.backend_name,
             'dim_obs': dim_obs,
             'dim_action': dim_action,
             'depth_pool_kernel': depth_pool_kernel,
@@ -157,21 +179,25 @@ def main():
     B = config.train.num_envs
     for i in pbar:
         # 每个 iteration 都重新随机生成一批环境，并清空模型的循环隐藏状态。
+        env.set_obstacle_curriculum_step(i)
         env.reset()
         model.reset()
 
         # 这些 history 用来在 rollout 结束后统一计算轨迹级 loss。
         p_history = []
+        R_history = []
         v_history = []
         target_v_history = []
         vec_to_pt_history = []
         v_preds = []
         v_net_feats = []
+        extra_loss_history = {name: [] for name in required_loss_history}
         h = None
 
         # 模拟一拍控制延迟：当前环境执行 act_buffer[t]，而网络输出 append 到队尾。
         act_lag = 1
-        act_buffer = [env.act] * (act_lag + 1)
+        initial_control = action_adapter.initial_control(env)
+        act_buffer = [initial_control] * (act_lag + 1)
         target_v_raw = env.p_target - env.p
         if config.train.yaw_drift:
             # 可选目标方向漂移，用来训练策略对 yaw 偏差更鲁棒。
@@ -190,6 +216,7 @@ def main():
             ctl_dt = normalvariate(1.0 / config.inference.ctl_freq, 0.1 / config.inference.ctl_freq)
 
             p_history.append(env.p)
+            R_history.append(env.R)
             vec_to_pt_history.append(
                 env.find_vec_to_nearest_pt(
                     use_future_samples=config.train.use_future_collision_samples
@@ -205,7 +232,7 @@ def main():
             # 先用上一拍控制推进环境；当前时刻新动作在后面由模型产生。
             # 默认用真实速度方向修正 yaw；开启参数后改用目标方向修正 yaw。
             yaw_correction_vec = target_v_raw if config.inference.yaw_target_correction else env.v
-            env.run(act_buffer[t], ctl_dt, yaw_correction_vec)
+            dynamics_backend.step(env, act_buffer[t], ctl_dt, yaw_correction_vec)
 
             # 状态输入包含目标速度局部表达、机体 up 向量和安全距离 margin；
             # 如果启用 odom，还加入当前速度的局部表达。
@@ -220,17 +247,24 @@ def main():
             obs = observation_builder.build(sensor_inputs=sensor_inputs, state=state)
             if config.sensor.name == "mid360":
                 x = obs["mid360_pseudo_image"]
-                act, _, h = model(obs, hx=h)
+                if "mid360_pseudo_image" in extra_loss_history:
+                    extra_loss_history["mid360_pseudo_image"].append(x)
+                act, _, h = unpack_model_output(model(obs, hx=h), h)
             else:
                 depth = obs["depth"]
+                if "depth" in extra_loss_history:
+                    extra_loss_history["depth"].append(depth)
                 # 深度图预处理：近处更亮，裁剪极近/极远深度，加入噪声，再池化降采样。
                 x = 3 / depth.clamp_(0.3, 24) - 0.6 + torch.randn_like(depth) * 0.02
                 x = F.max_pool2d(x[:, None], depth_pool_kernel, depth_pool_kernel)
-                act, _, h = model(x, state, h)
+                act, _, h = unpack_model_output(model(x, state, h), h)
+            if "hidden" in extra_loss_history:
+                extra_loss_history["hidden"].append(h)
 
             # 动作语义由 adapter 统一处理；accel_velocity 保持旧的 6D 动作公式。
             adapted_action = action_adapter.to_control(act, env, R)
-            v_preds.append(adapted_action.v_pred)
+            if adapted_action.v_pred is not None:
+                v_preds.append(adapted_action.v_pred)
             act_buffer.append(adapted_action.control)
             v_net_feats.append(torch.cat([adapted_action.control, local_v, h], -1))
 
@@ -239,15 +273,19 @@ def main():
 
         p_history = torch.stack(p_history)
 
-        loss_result = compute_training_loss(
-            loss_config=config.loss,
+        loss_context = LossContext.from_rollout(
             v_history=v_history,
+            R_history=R_history,
             target_v_history=target_v_history,
             v_preds=v_preds,
             act_buffer=act_buffer,
             vec_to_pt_history=vec_to_pt_history,
             margin=env.margin,
+            mass=env.mass if hasattr(env, "mass") else None,
+            action_mode=config.model.action_mode,
+            extras=extra_loss_history,
         )
+        loss_result = loss_registry.compute(loss_context, step=i)
 
         if torch.isnan(loss_result.loss):
             print("loss is nan, exiting...")

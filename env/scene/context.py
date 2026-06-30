@@ -23,3 +23,9 @@ class SceneContext:
             scale=scale,
             n_drones_per_group=int(env.n_drones_per_group),
         )
+
+    def obstacle_count(self, name: str, default: int) -> int:
+        counts = getattr(self.env, "current_obstacle_counts", None)
+        if isinstance(counts, dict) and name in counts:
+            return int(counts[name])
+        return int(default)

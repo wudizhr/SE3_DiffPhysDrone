@@ -45,4 +45,5 @@ sensor:
 model:
   name: mid360_cnn_model
   dim_obs: 16
+  backend_name: point_mass
   action_mode: accel_velocity

@@ -1,0 +1,61 @@
+output: /home/zhr/SE3_Diff/visualization/scenes/example_empty.pt
+seed: 44
+device: cuda
+
+mission:
+  start: [-10.5, -3.,  1]
+  target: [18.,  3.,  1]
+  target_reached_radius: 3.0
+
+clearance:
+  enabled: true
+  radius: 2.5
+  points: mission
+
+env:
+  width: 64
+  height: 48
+  grad_decay: 0.4
+  speed_mtp: 1.0
+  cam_angle: 10
+  fov_x_half_tan: 0.53
+  single: true
+  gate: false
+  ground_voxels: false
+  ceiling: false
+  ceiling_height: 3.5
+  scaffold: false
+  random_rotation: false
+  gap: false
+  gap_prob: 1.0
+
+  n_balls: 0
+  n_voxels: 0
+  n_cyl: 0
+  n_cyl_h: 0
+  n_ground_voxels: 0
+
+  max_speed: 2.0
+  margin: 0.20
+
+obstacles:
+
+  # Obstacles are sampled as rand * *_w + *_b before Env's later speed scaling.
+  # balls: [x, y, z, r]
+  ball_w: [8.0, 18.0, 6.0, 0.2]
+  ball_b: [0.0, -9.0, -1.0, 0.4]
+  # voxels: [cx, cy, cz, rx, ry, rz]
+  voxel_w: [8.0, 18.0, 6.0, 0.1, 0.1, 0.1]
+  voxel_b: [0.0, -9.0, -1.0, 0.2, 0.2, 0.2]
+  # extra ground voxel sampling when ground_voxels=true
+  ground_voxel_w: [8.0, 18.0, 0.0, 2.9, 2.9, 1.9]
+  ground_voxel_b: [0.0, -9.0, -1.0, 0.1, 0.1, 0.1]
+  # vertical cylinders: [x, y, r]
+  cyl_w: [8.0, 18.0, 0.35]
+  cyl_b: [0.0, -9.0, 0.05]
+  # horizontal cylinders: [x, z, r]
+  cyl_h_w: [8.0, 6.0, 0.1]
+  cyl_h_b: [0.0, 0.0, 0.05]
+  # optional gate sampling: [x, y, z, r]
+  gate_w: [2.0, 2.0, 1.0, 0.5]
+  gate_b: [3.0, -1.0, 0.0, 0.5]

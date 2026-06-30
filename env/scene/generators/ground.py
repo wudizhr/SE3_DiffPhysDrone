@@ -30,8 +30,9 @@ class GroundObstacleGenerator(ObstacleGenerator):
             balls[:, :ground_ball_count, 3] = ground_balls_r
             balls[:, :ground_ball_count, 2] = ground_balls_h - ground_balls_r - 1
 
-        if self.n_ground_voxels > 0:
-            ground_voxels = torch.rand((B, self.n_ground_voxels, 6), device=device) * env.ground_voxel_w + env.ground_voxel_b
+        n_ground_voxels = ctx.obstacle_count("n_ground_voxels", self.n_ground_voxels)
+        if n_ground_voxels > 0:
+            ground_voxels = torch.rand((B, n_ground_voxels, 6), device=device) * env.ground_voxel_w + env.ground_voxel_b
             ground_voxels[:, :, 2] = ground_voxels[:, :, 5] - 1
             voxels = torch.cat([voxels, ground_voxels], 1)
             scene.voxels = voxels

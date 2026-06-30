@@ -57,7 +57,6 @@ __global__ void update_state_vec_cuda_kernel(
     R_new[b][2][2] = uz;
 }
 
-
 template <typename scalar_t>
 __global__ void run_forward_cuda_kernel(
     torch::PackedTensorAccessor<scalar_t,3,torch::RestrictPtrTraits,size_t> R,

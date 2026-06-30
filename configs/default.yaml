@@ -19,6 +19,24 @@ env:
   n_cyl: 30
   n_cyl_h: 2
   n_ground_voxels: 10
+  obstacle_curriculum:
+    enabled: false
+    start_iter: 0
+    end_iter: 20000
+    start_counts:
+      n_balls: 5
+      n_voxels: 5
+      n_cyl: 5
+      n_cyl_h: 0
+      n_ground_voxels: 2
+  quad_mass: 1.0
+  quad_mass_randomization: 0.0
+  ctbr_body_rate_limit: 8.0
+  ctbr_thrust_min: 0.0
+  ctbr_thrust_max: 30.0
+  ctbr_omega_time_constant: 0.03
+  ctbr_thrust_time_constant: 0.05
+  ctbr_linear_drag: 0.0
 
 train:
   resume:
@@ -38,6 +56,36 @@ loss:
   coef_obj_avoidance: 1.5
   coef_d_acc: 0.01
   coef_d_jerk: 0.001
+  # 推荐新写法：terms 存在时优先使用 terms；上面的 coef_* 保留为旧配置兼容入口。
+
+  # terms:
+  #   velocity_tracking:
+  #     weight: 1.0
+  #     enabled: true
+  #   velocity_prediction:
+  #     weight: 2.0
+  #     enabled: true
+  #   object_avoidance:
+  #     weight: 1.5
+  #     enabled: true
+  #   collision:
+  #     weight: 2.0
+  #     enabled: true
+  #   action_l2:
+  #     weight: 0.01
+  #     enabled: true
+  #   jerk:
+  #     weight: 0.01
+  #     enabled: true
+  #   yaw_alignment:
+  #     weight: 0.1
+  #     enabled: true
+  #   thrust_regularization:
+  #     weight: 0.0
+  #     enabled: false
+  #   ctbr_smoothness:
+  #     weight: 0.0
+  #     enabled: false
 
 inference:
   device: cuda

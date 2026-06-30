@@ -26,8 +26,17 @@ class EnvConfig:
     n_cyl: int = 30
     n_cyl_h: int = 2
     n_ground_voxels: int = 10
+    obstacle_curriculum: Dict[str, Any] = field(default_factory=dict)
     max_speed: float | None = None
     margin: float | None = None
+    quad_mass: float = 1.0
+    quad_mass_randomization: float = 0.0
+    ctbr_body_rate_limit: float = 8.0
+    ctbr_thrust_min: float = 0.0
+    ctbr_thrust_max: float = 30.0
+    ctbr_omega_time_constant: float = 0.03
+    ctbr_thrust_time_constant: float = 0.05
+    ctbr_linear_drag: float = 0.0
     is_scale: bool = True
 
 
@@ -52,6 +61,7 @@ class LossConfig:
     coef_obj_avoidance: float = 1.5
     coef_d_acc: float = 0.01
     coef_d_jerk: float = 0.001
+    terms: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -70,6 +80,7 @@ class ModelConfig:
     name: str = "pm_model"
     model_type: str = "pm_model"
     model_class: str = "Model"
+    backend_name: str = "point_mass"
     dim_obs: int | None = None
     dim_action: int = 6
     depth_pool_kernel: int = 4

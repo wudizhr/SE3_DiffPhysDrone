@@ -30,6 +30,7 @@ class FakeEnv:
         self.pitch_ctl_delay = FakeTensor("pitch_ctl_delay")
         self.yaw_ctl_delay = FakeTensor("yaw_ctl_delay")
         self.margin = FakeTensor("margin")
+        self.mass = FakeTensor("mass")
         self.drone_radius = 0.11
         self.n_drones_per_group = 8
         self.fov_x_half_tan = 0.53
@@ -52,6 +53,7 @@ def test_policy_runner_config_is_lightweight_and_defaults_to_deterministic():
     assert config.ctl_dt == 0.05
     assert config.max_steps == 12
     assert config.deterministic_visualization is True
+    assert config.backend_name == "point_mass"
 
 
 def test_disable_visualization_randomization_normalizes_runtime_noise_fields():

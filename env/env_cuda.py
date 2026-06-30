@@ -5,6 +5,7 @@ import torch
 import torch.nn.functional as F
 import quadsim_cuda
 from env.scene import SceneContext, build_scene_pipeline_from_legacy_env
+from env.scene.curriculum import ObstacleCountCurriculum
 from se3diff_config.schema import EnvConfig
 
 
@@ -55,6 +56,119 @@ class RunFunction(torch.autograd.Function):
 run = RunFunction.apply
 
 
+class RunCtbrFunction(torch.autograd.Function):
+    """把 quadsim_cuda.run_ctbr_forward/run_ctbr_backward 包装成 PyTorch 可微函数。"""
+
+    @staticmethod
+    def forward(
+        ctx,
+        R,
+        omega,
+        collective_thrust,
+        thrust_cmd,
+        omega_cmd,
+        mass,
+        dg,
+        p,
+        v,
+        v_wind,
+        a,
+        grad_decay,
+        ctl_dt,
+        omega_time_constant,
+        thrust_time_constant,
+        linear_drag,
+    ):
+        R_next, omega_next, collective_thrust_next, p_next, v_next, a_next = quadsim_cuda.run_ctbr_forward(
+            R,
+            omega,
+            collective_thrust,
+            thrust_cmd,
+            omega_cmd,
+            mass,
+            dg,
+            p,
+            v,
+            v_wind,
+            a,
+            ctl_dt,
+            omega_time_constant,
+            thrust_time_constant,
+            linear_drag,
+        )
+        ctx.save_for_backward(R, omega_next, collective_thrust_next, mass, v)
+        ctx.grad_decay = grad_decay
+        ctx.ctl_dt = ctl_dt
+        ctx.omega_time_constant = omega_time_constant
+        ctx.thrust_time_constant = thrust_time_constant
+        ctx.linear_drag = linear_drag
+        return R_next, omega_next, collective_thrust_next, p_next, v_next, a_next
+
+    @staticmethod
+    def backward(
+        ctx,
+        d_R_next,
+        d_omega_next,
+        d_collective_thrust_next,
+        d_p_next,
+        d_v_next,
+        d_a_next,
+    ):
+        R, omega_next, collective_thrust_next, mass, v = ctx.saved_tensors
+        if d_R_next is None:
+            d_R_next = torch.zeros_like(R)
+        if d_omega_next is None:
+            d_omega_next = torch.zeros_like(omega_next)
+        if d_collective_thrust_next is None:
+            d_collective_thrust_next = torch.zeros_like(collective_thrust_next)
+        if d_p_next is None:
+            d_p_next = torch.zeros_like(v)
+        if d_v_next is None:
+            d_v_next = torch.zeros_like(v)
+        if d_a_next is None:
+            d_a_next = torch.zeros_like(v)
+
+        d_R, d_omega, d_collective_thrust, d_thrust_cmd, d_omega_cmd, d_p, d_v, d_a = quadsim_cuda.run_ctbr_backward(
+            R,
+            omega_next,
+            collective_thrust_next,
+            mass,
+            v,
+            d_R_next.contiguous(),
+            d_omega_next.contiguous(),
+            d_collective_thrust_next.contiguous(),
+            d_p_next.contiguous(),
+            d_v_next.contiguous(),
+            d_a_next.contiguous(),
+            ctx.grad_decay,
+            ctx.ctl_dt,
+            ctx.omega_time_constant,
+            ctx.thrust_time_constant,
+            ctx.linear_drag,
+        )
+        return (
+            d_R,
+            d_omega,
+            d_collective_thrust,
+            d_thrust_cmd,
+            d_omega_cmd,
+            None,
+            None,
+            d_p,
+            d_v,
+            None,
+            d_a,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+
+
+run_ctbr_cuda = RunCtbrFunction.apply
+
+
 class Env:
     """批量无人机仿真环境。
 
@@ -64,8 +178,13 @@ class Env:
 
     def __init__(self, batch_size, width, height, grad_decay, device='cpu', fov_x_half_tan=0.53,
                  single=False, gate=False, ground_voxels=False, ceiling=False, ceiling_height=3.0, scaffold=False, speed_mtp=1,
-                 random_rotation=False, cam_angle=10, start=None, target=None, max_speed=None, margin=None, gap=False, gap_prob=0.0,
-                 n_balls=30, n_voxels=30, n_cyl=30, n_cyl_h=2, n_ground_voxels=10, is_scale=True) -> None:
+                 random_rotation=False, cam_angle=10, start=None, target=None, max_speed=None, margin=None,
+                 quad_mass=1.0, quad_mass_randomization=0.0,
+                 ctbr_body_rate_limit=8.0, ctbr_thrust_min=0.0, ctbr_thrust_max=30.0,
+                 ctbr_omega_time_constant=0.03, ctbr_thrust_time_constant=0.05, ctbr_linear_drag=0.0,
+                 gap=False, gap_prob=0.0,
+                 n_balls=30, n_voxels=30, n_cyl=30, n_cyl_h=2, n_ground_voxels=10,
+                 obstacle_curriculum=None, is_scale=True) -> None:
         self.device = device
         self.batch_size = batch_size
         self.width = width
@@ -101,18 +220,18 @@ class Env:
             [-10.5,  1.,  1],
             [ 18.5,  1.,  1],
             [ 10.0,  3.,  1],
-            [ 18.0,  3.,  1],
+            [ 10.0,  3.,  1],
             [-10.0, -1.,  1],
-            [ 19.0, -1.,  1],
+            [ 10.0, -1.,  1],
         ], device=device).repeat(batch_size // 8 + 7, 1)[:batch_size]
         self.p_end = torch.as_tensor([
             [18.,  3.,  1],
             [-10.,  3.,  1],
             [-18., -1.,  1],
             [-10., -1.,  1],
-            [-18., -3.,  1],
             [-10., -3.,  1],
-            [18.,  1.,  1],
+            [-10., -3.,  1],
+            [10.,  1.,  1],
             [-10.,  1.,  1],
         ], device=device).repeat(batch_size // 8 + 7, 1)[:batch_size]
         self.flow = torch.empty((batch_size, 0, height, width), device=device)
@@ -133,9 +252,39 @@ class Env:
         self.n_cyl = int(n_cyl)
         self.n_cyl_h = int(n_cyl_h)
         self.n_ground_voxels = int(n_ground_voxels)
+        self.final_obstacle_counts = {
+            "n_balls": self.n_balls,
+            "n_voxels": self.n_voxels,
+            "n_cyl": self.n_cyl,
+            "n_cyl_h": self.n_cyl_h,
+            "n_ground_voxels": self.n_ground_voxels,
+        }
+        self.obstacle_curriculum = ObstacleCountCurriculum.from_config(obstacle_curriculum)
+        self.obstacle_curriculum_step = None
+        self.current_obstacle_counts = dict(self.final_obstacle_counts)
         self.is_scale = bool(is_scale)
         self.fixed_max_speed = None if max_speed is None else float(max_speed)
         self.fixed_margin = None if margin is None else float(margin)
+        self.quad_mass = float(quad_mass)
+        self.quad_mass_randomization = float(quad_mass_randomization)
+        if self.quad_mass <= 0:
+            raise ValueError(f"quad_mass must be positive, got {self.quad_mass}")
+        if self.quad_mass_randomization < 0:
+            raise ValueError(f"quad_mass_randomization must be non-negative, got {self.quad_mass_randomization}")
+        self.ctbr_body_rate_limit = float(ctbr_body_rate_limit)
+        self.ctbr_thrust_min = float(ctbr_thrust_min)
+        self.ctbr_thrust_max = float(ctbr_thrust_max)
+        self.ctbr_omega_time_constant = float(ctbr_omega_time_constant)
+        self.ctbr_thrust_time_constant = float(ctbr_thrust_time_constant)
+        self.ctbr_linear_drag = float(ctbr_linear_drag)
+        if self.ctbr_body_rate_limit <= 0:
+            raise ValueError(f"ctbr_body_rate_limit must be positive, got {self.ctbr_body_rate_limit}")
+        if self.ctbr_thrust_max <= self.ctbr_thrust_min:
+            raise ValueError("ctbr_thrust_max must be greater than ctbr_thrust_min")
+        if self.ctbr_omega_time_constant <= 0 or self.ctbr_thrust_time_constant <= 0:
+            raise ValueError("CTBR response time constants must be positive")
+        if self.ctbr_linear_drag < 0:
+            raise ValueError(f"ctbr_linear_drag must be non-negative, got {self.ctbr_linear_drag}")
         self.scene_pipeline = build_scene_pipeline_from_legacy_env(
             EnvConfig(
                 width=width,
@@ -158,8 +307,17 @@ class Env:
                 n_cyl=self.n_cyl,
                 n_cyl_h=self.n_cyl_h,
                 n_ground_voxels=self.n_ground_voxels,
+                obstacle_curriculum=obstacle_curriculum or {},
                 max_speed=self.fixed_max_speed,
                 margin=self.fixed_margin,
+                quad_mass=self.quad_mass,
+                quad_mass_randomization=self.quad_mass_randomization,
+                ctbr_body_rate_limit=self.ctbr_body_rate_limit,
+                ctbr_thrust_min=self.ctbr_thrust_min,
+                ctbr_thrust_max=self.ctbr_thrust_max,
+                ctbr_omega_time_constant=self.ctbr_omega_time_constant,
+                ctbr_thrust_time_constant=self.ctbr_thrust_time_constant,
+                ctbr_linear_drag=self.ctbr_linear_drag,
                 is_scale=self.is_scale,
             )
         )
@@ -181,11 +339,25 @@ class Env:
             return tensor
         raise ValueError(f"{name} must have shape [3] or [{self.batch_size}, 3], got {tuple(tensor.shape)}")
 
+    def set_obstacle_curriculum_step(self, step):
+        self.obstacle_curriculum_step = None if step is None else int(step)
+        self.current_obstacle_counts = self.obstacle_curriculum.counts_at(
+            step=self.obstacle_curriculum_step,
+            final_counts=self.final_obstacle_counts,
+        )
+
+    def _refresh_obstacle_curriculum_counts(self):
+        self.current_obstacle_counts = self.obstacle_curriculum.counts_at(
+            step=self.obstacle_curriculum_step,
+            final_counts=self.final_obstacle_counts,
+        )
+
     def reset(self):
         """重新随机生成一批场景，并初始化所有无人机状态。"""
 
         B = self.batch_size
         device = self.device
+        self._refresh_obstacle_curriculum_counts()
 
         # 相机相对机体的俯仰安装角，训练时为每个样本加一点随机扰动。
         cam_angle = (self.cam_angle + torch.randn(B, device=device)) * math.pi / 180
@@ -227,6 +399,15 @@ class Env:
         # 模拟推力估计误差，训练策略对轻微模型不准更鲁棒。
         self.thr_est_error = 1 + torch.randn(B, device=device) * 0.01
 
+        if self.quad_mass_randomization > 0:
+            mass_noise = 1 + (torch.rand((B, 1), device=device) * 2 - 1) * self.quad_mass_randomization
+            self.mass = self.quad_mass * mass_noise
+        else:
+            self.mass = torch.full((B, 1), self.quad_mass, device=device)
+        self.omega = torch.zeros((B, 3), device=device)
+        hover_thrust = self.mass * -self.g_std[2]
+        self.collective_thrust = hover_thrust.clamp(self.ctbr_thrust_min, self.ctbr_thrust_max)
+
         # 无人机动力学随机化：控制延迟、起终点、风、扰动、阻力等。
         self.pitch_ctl_delay = 12 + 1.2 * torch.randn((B, 1), device=device)
         self.yaw_ctl_delay = 6 + 0.6 * torch.randn((B, 1), device=device)
@@ -264,6 +445,40 @@ class Env:
         self.drag_2 = torch.rand((B, 2), device=device) * 0.15 + 0.3
         self.drag_2[:, 0] = 0
         self.z_drag_coef = torch.ones((B, 1), device=device)
+
+    @staticmethod
+    def _skew(vec):
+        """Return a batch of skew-symmetric matrices for vectors shaped [B, 3]."""
+
+        zeros = torch.zeros_like(vec[:, 0])
+        wx, wy, wz = vec.unbind(-1)
+        return torch.stack([
+            zeros, -wz, wy,
+            wz, zeros, -wx,
+            -wy, wx, zeros,
+        ], -1).reshape(vec.shape[0], 3, 3)
+
+    @classmethod
+    def _rotation_increment(cls, omega, dt):
+        """Rodrigues update for body-rate integration, differentiable in PyTorch."""
+
+        rot_vec = omega * dt
+        theta = torch.linalg.norm(rot_vec, dim=-1, keepdim=True)
+        K = cls._skew(rot_vec)
+        K2 = K @ K
+        eye = torch.eye(3, device=omega.device, dtype=omega.dtype).expand(omega.shape[0], 3, 3)
+        theta2 = theta.square()
+        sin_over_theta = torch.where(
+            theta > 1e-6,
+            torch.sin(theta) / theta,
+            1 - theta2 / 6 + theta2 * theta2 / 120,
+        )
+        one_minus_cos_over_theta2 = torch.where(
+            theta > 1e-6,
+            (1 - torch.cos(theta)) / theta2.clamp_min(1e-12),
+            0.5 - theta2 / 24 + theta2 * theta2 / 720,
+        )
+        return eye + sin_over_theta[:, None] * K + one_minus_cos_over_theta2[:, None] * K2
 
     @staticmethod
     @torch.no_grad()
@@ -342,6 +557,66 @@ class Env:
         alpha = torch.exp(-self.yaw_ctl_delay * ctl_dt)
         self.R_old = self.R.clone()
         self.R = quadsim_cuda.update_state_vec(self.R, self.act, v_pred, alpha, 5)
+
+    def _run_ctbr_torch_reference(self, ctbr_cmd, ctl_dt=1/15, _yaw_correction_vec=None):
+        """Pure PyTorch CTBR reference dynamics.
+
+        ctbr_cmd is [collective_thrust_N, wx, wy, wz] with body rates in rad/s.
+        """
+
+        thrust_cmd = ctbr_cmd[:, :1].clamp(self.ctbr_thrust_min, self.ctbr_thrust_max)
+        omega_cmd = ctbr_cmd[:, 1:4].clamp(-self.ctbr_body_rate_limit, self.ctbr_body_rate_limit)
+
+        alpha_w = math.exp(-ctl_dt / self.ctbr_omega_time_constant)
+        alpha_c = math.exp(-ctl_dt / self.ctbr_thrust_time_constant)
+        self.omega = self.omega * alpha_w + omega_cmd * (1 - alpha_w)
+        self.collective_thrust = self.collective_thrust * alpha_c + thrust_cmd * (1 - alpha_c)
+
+        self.p_old = self.p
+        self.R_old = self.R.clone()
+        dR_body = self._rotation_increment(self.omega, ctl_dt)
+        self.R = self.R @ dR_body
+
+        thrust_acc = self.collective_thrust / self.mass * self.R[:, :, 2]
+        v_rel_wind = self.v - self.v_wind
+        linear_drag = self.ctbr_linear_drag * v_rel_wind
+        a_next = thrust_acc + self.g_std + self.dg - linear_drag
+
+        self.p = g_decay(self.p, self.grad_decay ** ctl_dt) + self.v * ctl_dt + 0.5 * self.a * ctl_dt**2
+        self.v = g_decay(self.v, self.grad_decay ** ctl_dt) + 0.5 * (self.a + a_next) * ctl_dt
+        self.a = a_next
+        self.act = ctbr_cmd
+
+    def run_ctbr(self, ctbr_cmd, ctl_dt=1/15, _yaw_correction_vec=None):
+        """用 CTBR 刚体动力学推进一小步，CUDA 可用时使用自定义前反向核。"""
+
+        if self.R.is_cuda and hasattr(quadsim_cuda, "run_ctbr_forward") and hasattr(quadsim_cuda, "run_ctbr_backward"):
+            thrust_cmd = ctbr_cmd[:, :1].clamp(self.ctbr_thrust_min, self.ctbr_thrust_max)
+            omega_cmd = ctbr_cmd[:, 1:4].clamp(-self.ctbr_body_rate_limit, self.ctbr_body_rate_limit)
+            self.p_old = self.p
+            self.R_old = self.R.clone()
+            self.R, self.omega, self.collective_thrust, self.p, self.v, self.a = run_ctbr_cuda(
+                self.R,
+                self.omega,
+                self.collective_thrust,
+                thrust_cmd,
+                omega_cmd,
+                self.mass,
+                self.dg,
+                self.p,
+                self.v,
+                self.v_wind,
+                self.a,
+                self.grad_decay,
+                ctl_dt,
+                self.ctbr_omega_time_constant,
+                self.ctbr_thrust_time_constant,
+                self.ctbr_linear_drag,
+            )
+            self.act = ctbr_cmd
+            return
+
+        self._run_ctbr_torch_reference(ctbr_cmd, ctl_dt, _yaw_correction_vec)
 
     def _run(self, act_pred, ctl_dt=1/15, v_pred=None):
         """旧的 Python 动力学实现/参考实现，主训练路径使用 run()。"""

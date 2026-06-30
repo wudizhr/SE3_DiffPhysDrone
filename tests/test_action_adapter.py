@@ -38,6 +38,39 @@ def test_accel_velocity_adapter_matches_legacy_formula():
     assert torch.allclose(result.control, legacy_control)
 
 
+def test_ctbr_adapter_scales_raw_action_to_thrust_and_body_rates():
+    import pytest
+
+    torch = pytest.importorskip("torch")
+
+    from control import CtbrActionAdapter
+
+    class FakeEnv:
+        batch_size = 2
+
+    env = FakeEnv()
+    env.ctbr_thrust_min = 2.0
+    env.ctbr_thrust_max = 10.0
+    env.ctbr_body_rate_limit = 4.0
+    env.collective_thrust = torch.full((2, 1), 6.0)
+    env.omega = torch.zeros((2, 3))
+
+    adapter = CtbrActionAdapter()
+    raw_action = torch.tensor([[0.0, 0.0, 1.0, -1.0], [10.0, -10.0, 0.5, -0.5]])
+
+    initial = adapter.initial_control(env)
+    result = adapter.to_control(raw_action, env, torch.eye(3).repeat(2, 1, 1))
+
+    assert torch.allclose(initial, torch.tensor([[6.0, 0.0, 0.0, 0.0], [6.0, 0.0, 0.0, 0.0]]))
+    assert result.control.shape == (2, 4)
+    assert torch.all(result.thrust_cmd >= 2.0)
+    assert torch.all(result.thrust_cmd <= 10.0)
+    assert torch.all(result.omega_cmd >= -4.0)
+    assert torch.all(result.omega_cmd <= 4.0)
+    assert torch.allclose(result.control[:, :1], result.thrust_cmd)
+    assert torch.allclose(result.control[:, 1:], result.omega_cmd)
+
+
 def test_training_and_rollout_use_action_adapter_instead_of_inline_formula():
     train_source = (ROOT / "train" / "main_cuda.py").read_text()
     runner_source = (ROOT / "rollout" / "policy_runner.py").read_text()

@@ -8,6 +8,7 @@ setup(
             'quadsim.cpp',
             'quadsim_kernel.cu',
             'dynamics_kernel.cu',
+            'dynamics_ctbr_kernel.cu',
         ]),
     ],
     cmdclass={

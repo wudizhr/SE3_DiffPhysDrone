@@ -21,8 +21,12 @@ class RandomPrimitiveGenerator(ObstacleGenerator):
         env = ctx.env
         B = ctx.batch_size
         device = ctx.device
-        balls = torch.rand((B, self.n_balls, 4), device=device) * env.ball_w + env.ball_b
-        voxels = torch.rand((B, self.n_voxels, 6), device=device) * env.voxel_w + env.voxel_b
-        cyl = torch.rand((B, self.n_cyl, 3), device=device) * env.cyl_w + env.cyl_b
-        cyl_h = torch.rand((B, self.n_cyl_h, 3), device=device) * env.cyl_h_w + env.cyl_h_b
+        n_balls = ctx.obstacle_count("n_balls", self.n_balls)
+        n_voxels = ctx.obstacle_count("n_voxels", self.n_voxels)
+        n_cyl = ctx.obstacle_count("n_cyl", self.n_cyl)
+        n_cyl_h = ctx.obstacle_count("n_cyl_h", self.n_cyl_h)
+        balls = torch.rand((B, n_balls, 4), device=device) * env.ball_w + env.ball_b
+        voxels = torch.rand((B, n_voxels, 6), device=device) * env.voxel_w + env.voxel_b
+        cyl = torch.rand((B, n_cyl, 3), device=device) * env.cyl_w + env.cyl_b
+        cyl_h = torch.rand((B, n_cyl_h, 3), device=device) * env.cyl_h_w + env.cyl_h_b
         return ScenePrimitives(balls=balls, voxels=voxels, cyl=cyl, cyl_h=cyl_h)

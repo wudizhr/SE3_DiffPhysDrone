@@ -1,5 +1,5 @@
 output: /home/zhr/SE3_Diff/visualization/scenes/example_scene.pt
-seed: 44
+seed: 40
 device: cuda
 
 mission:
@@ -28,7 +28,7 @@ env:
   ceiling_height: 3.5
   scaffold: false
   random_rotation: false
-  max_speed: 5.0
+  max_speed: 2.0
   margin: 0.20
   # is_scale: false
 

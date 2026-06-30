@@ -1,0 +1,11 @@
+{
+    "schema_version": 1,
+    "commit": "4f09921bf43f5539e35fcd978fb5120ffc8b51c5",
+    "indexed_at": "2026-06-30T05:01:26Z",
+    "project": "home-zhr-SE3_Diff",
+    "nodes": 670,
+    "edges": 2322,
+    "original_size": 3866624,
+    "compressed_size": 730940,
+    "compression_level": 3
+}

@@ -68,7 +68,7 @@ def test_legacy_env_config_builds_scene_pipeline_generators():
     assert pipeline.post_scale_generators[0].prob == 0.7
 
 
-def test_env_accepts_fixed_max_speed_and_margin_for_repeatable_scenes():
+def test_env_accepts_fixed_physical_params_for_repeatable_scenes():
     import pytest
 
     torch = pytest.importorskip("torch")
@@ -90,13 +90,45 @@ def test_env_accepts_fixed_max_speed_and_margin_for_repeatable_scenes():
         random_rotation=False,
         max_speed=4.0,
         margin=0.2,
+        quad_mass=1.3,
+        quad_mass_randomization=0.0,
     )
 
     assert torch.allclose(env.max_speed, torch.full((1, 1), 4.0, device=device))
     assert torch.allclose(env.margin, torch.full((1,), 0.2, device=device))
+    assert torch.allclose(env.mass, torch.full((1, 1), 1.3, device=device))
     env.reset()
     assert torch.allclose(env.max_speed, torch.full((1, 1), 4.0, device=device))
     assert torch.allclose(env.margin, torch.full((1,), 0.2, device=device))
+    assert torch.allclose(env.mass, torch.full((1, 1), 1.3, device=device))
+
+
+def test_env_randomizes_quad_mass_within_ratio():
+    import pytest
+
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("quadsim_cuda")
+
+    from env import Env
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if device.type != "cuda":
+        pytest.skip("quadsim_cuda environment smoke requires CUDA tensors")
+
+    env = Env(
+        8,
+        64,
+        48,
+        0.4,
+        device,
+        single=True,
+        quad_mass=2.0,
+        quad_mass_randomization=0.1,
+    )
+
+    assert env.mass.shape == (8, 1)
+    assert torch.all(env.mass >= 1.8)
+    assert torch.all(env.mass <= 2.2)
 
 
 def test_fixed_max_speed_and_margin_are_wired_through_config_entry_points():
@@ -107,12 +139,21 @@ def test_fixed_max_speed_and_margin_are_wired_through_config_entry_points():
 
     assert "max_speed: float | None = None" in schema_source
     assert "margin: float | None = None" in schema_source
+    assert "quad_mass: float = 1.0" in schema_source
+    assert "quad_mass_randomization: float = 0.0" in schema_source
     assert "max_speed=env_config.max_speed" in factory_source
     assert "margin=env_config.margin" in factory_source
+    assert "quad_mass=float(env_config.quad_mass)" in factory_source
+    assert "quad_mass_randomization=float(env_config.quad_mass_randomization)" in factory_source
     assert "fixed_max_speed" in env_source
     assert "fixed_margin" in env_source
+    assert "self.mass" in env_source
     assert 'max_speed=choose(args.max_speed, env_config, "max_speed", None)' in export_source
     assert 'margin=choose(args.margin, env_config, "margin", None)' in export_source
+    assert 'quad_mass=float(choose(args.quad_mass, env_config, "quad_mass", 1.0))' in export_source
+    assert '"mass": cpu_clone(env.mass[0])' in export_source
+    assert '"ctbr_body_rate_limit": env.ctbr_body_rate_limit' in export_source
+    assert '"collective_thrust": cpu_clone(env.collective_thrust[0])' in export_source
 
 
 def test_gap_wall_is_generated_after_speed_scaling():
@@ -160,3 +201,53 @@ def test_env_reset_delegates_scene_generation_to_pipeline():
     assert "self.scene_pipeline = build_scene_pipeline_from_legacy_env" in source
     assert "scene = self.scene_pipeline.generate(ctx)" in source
     assert "scene.to_env(self)" in source
+
+
+def test_obstacle_curriculum_counts_are_linearly_scheduled():
+    from env.scene.curriculum import ObstacleCountCurriculum
+
+    curriculum = ObstacleCountCurriculum(
+        enabled=True,
+        start_iter=10,
+        end_iter=30,
+        start_counts={
+            "n_balls": 0,
+            "n_voxels": 2,
+            "n_cyl": 4,
+            "n_cyl_h": 0,
+            "n_ground_voxels": 1,
+        },
+    )
+    final_counts = {
+        "n_balls": 10,
+        "n_voxels": 12,
+        "n_cyl": 14,
+        "n_cyl_h": 2,
+        "n_ground_voxels": 5,
+    }
+
+    assert curriculum.counts_at(step=0, final_counts=final_counts)["n_balls"] == 0
+    assert curriculum.counts_at(step=20, final_counts=final_counts) == {
+        "n_balls": 5,
+        "n_voxels": 7,
+        "n_cyl": 9,
+        "n_cyl_h": 1,
+        "n_ground_voxels": 3,
+    }
+    assert curriculum.counts_at(step=30, final_counts=final_counts) == final_counts
+
+
+def test_obstacle_curriculum_is_wired_to_env_and_training_loop():
+    schema_source = (ROOT / "se3diff_config" / "schema.py").read_text()
+    factory_source = (ROOT / "se3diff_config" / "env_factory.py").read_text()
+    env_source = (ROOT / "env" / "env_cuda.py").read_text()
+    train_source = (ROOT / "train" / "main_cuda.py").read_text()
+    random_source = (ROOT / "env" / "scene" / "generators" / "random_primitives.py").read_text()
+    ground_source = (ROOT / "env" / "scene" / "generators" / "ground.py").read_text()
+
+    assert "obstacle_curriculum: Dict[str, Any]" in schema_source
+    assert "obstacle_curriculum=env_config.obstacle_curriculum" in factory_source
+    assert "def set_obstacle_curriculum_step" in env_source
+    assert "env.set_obstacle_curriculum_step(i)" in train_source
+    assert 'ctx.obstacle_count("n_balls"' in random_source
+    assert 'ctx.obstacle_count("n_ground_voxels"' in ground_source

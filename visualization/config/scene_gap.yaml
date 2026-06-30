@@ -1,5 +1,5 @@
 output: /home/zhr/SE3_Diff/visualization/scenes/example_gap.pt
-seed: 42
+seed: 44
 device: cuda
 
 mission:
@@ -22,19 +22,20 @@ env:
   single: true
   gate: false
   ground_voxels: false
-  ceiling: true
+  ceiling: false
   ceiling_height: 3.5
   scaffold: false
   random_rotation: false
   gap: true
   gap_prob: 1.0
-  n_balls: 0
-  n_voxels: 0
-  n_cyl: 0
-  n_cyl_h: 0
-  n_ground_voxels: 0
 
-  max_speed: 4.0
+  n_balls: 10
+  n_cyl: 20
+  n_cyl_h: 2
+  n_ground_voxels: 5
+  n_voxels: 10
+
+  max_speed: 2.0
   margin: 0.20
 
 obstacles:

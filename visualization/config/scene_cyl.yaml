@@ -1,10 +1,10 @@
-output: /home/zhr/SE3_Diff/visualization/scenes/example_scene.pt
+output: /home/zhr/SE3_Diff/visualization/scenes/example_cyl.pt
 seed: 42
 device: cuda
 
 mission:
-  start: [5., -40.,  1]
-  target: [5.,  40.,  1]
+  start: [-10.5, -3.,  1]
+  target: [18.,  3.,  1]
   target_reached_radius: 3.0
 
 clearance:
@@ -32,7 +32,7 @@ env:
 
   n_balls: 0
   n_voxels: 0
-  n_cyl: 100
+  n_cyl: 50
   n_cyl_h: 0
   max_speed: 4.0
   margin: 0.20

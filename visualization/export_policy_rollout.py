@@ -221,6 +221,7 @@ def collect_rollout(config: Dict[str, Any], config_path: Path) -> Dict[str, Any]
             deterministic_visualization=bool(config.get("deterministic_visualization", True)),
             sensor_name=sensor_name,
             action_mode=str(config.get("action_mode", "accel_velocity")),
+            backend_name=str(config.get("backend_name", "point_mass")),
         ),
         observation_builder=observation_builder,
     )

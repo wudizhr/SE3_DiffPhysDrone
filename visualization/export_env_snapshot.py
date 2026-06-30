@@ -36,6 +36,32 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--speed_mtp", type=float, default=None)
     parser.add_argument("--max_speed", "--max-speed", dest="max_speed", type=float, default=None)
     parser.add_argument("--margin", type=float, default=None)
+    parser.add_argument("--quad_mass", "--quad-mass", dest="quad_mass", type=float, default=None)
+    parser.add_argument(
+        "--quad_mass_randomization",
+        "--quad-mass-randomization",
+        dest="quad_mass_randomization",
+        type=float,
+        default=None,
+    )
+    parser.add_argument("--ctbr_body_rate_limit", "--ctbr-body-rate-limit", dest="ctbr_body_rate_limit", type=float, default=None)
+    parser.add_argument("--ctbr_thrust_min", "--ctbr-thrust-min", dest="ctbr_thrust_min", type=float, default=None)
+    parser.add_argument("--ctbr_thrust_max", "--ctbr-thrust-max", dest="ctbr_thrust_max", type=float, default=None)
+    parser.add_argument(
+        "--ctbr_omega_time_constant",
+        "--ctbr-omega-time-constant",
+        dest="ctbr_omega_time_constant",
+        type=float,
+        default=None,
+    )
+    parser.add_argument(
+        "--ctbr_thrust_time_constant",
+        "--ctbr-thrust-time-constant",
+        dest="ctbr_thrust_time_constant",
+        type=float,
+        default=None,
+    )
+    parser.add_argument("--ctbr_linear_drag", "--ctbr-linear-drag", dest="ctbr_linear_drag", type=float, default=None)
     parser.add_argument("--cam_angle", type=int, default=None)
     parser.add_argument("--fov_x_half_tan", type=float, default=None)
     parser.add_argument("--gap", default=None, action=argparse.BooleanOptionalAction)
@@ -148,6 +174,14 @@ def empty_cli_args() -> argparse.Namespace:
         "speed_mtp",
         "max_speed",
         "margin",
+        "quad_mass",
+        "quad_mass_randomization",
+        "ctbr_body_rate_limit",
+        "ctbr_thrust_min",
+        "ctbr_thrust_max",
+        "ctbr_omega_time_constant",
+        "ctbr_thrust_time_constant",
+        "ctbr_linear_drag",
         "cam_angle",
         "fov_x_half_tan",
         "gap",
@@ -215,6 +249,14 @@ def export_scene_snapshot(
         speed_mtp=float(choose(args.speed_mtp, env_config, "speed_mtp", 1.0)),
         max_speed=choose(args.max_speed, env_config, "max_speed", None),
         margin=choose(args.margin, env_config, "margin", None),
+        quad_mass=float(choose(args.quad_mass, env_config, "quad_mass", 1.0)),
+        quad_mass_randomization=float(choose(args.quad_mass_randomization, env_config, "quad_mass_randomization", 0.0)),
+        ctbr_body_rate_limit=float(choose(args.ctbr_body_rate_limit, env_config, "ctbr_body_rate_limit", 8.0)),
+        ctbr_thrust_min=float(choose(args.ctbr_thrust_min, env_config, "ctbr_thrust_min", 0.0)),
+        ctbr_thrust_max=float(choose(args.ctbr_thrust_max, env_config, "ctbr_thrust_max", 30.0)),
+        ctbr_omega_time_constant=float(choose(args.ctbr_omega_time_constant, env_config, "ctbr_omega_time_constant", 0.03)),
+        ctbr_thrust_time_constant=float(choose(args.ctbr_thrust_time_constant, env_config, "ctbr_thrust_time_constant", 0.05)),
+        ctbr_linear_drag=float(choose(args.ctbr_linear_drag, env_config, "ctbr_linear_drag", 0.0)),
         random_rotation=bool(choose(args.random_rotation, env_config, "random_rotation", False)),
         cam_angle=int(choose(args.cam_angle, env_config, "cam_angle", 10)),
         gap=bool(choose(args.gap, env_config, "gap", False)),
@@ -251,6 +293,14 @@ def export_scene_snapshot(
         "ceiling_height": env.ceiling_height,
         "scaffold": env.scaffold,
         "speed_mtp": env.speed_mtp,
+        "quad_mass": env.quad_mass,
+        "quad_mass_randomization": env.quad_mass_randomization,
+        "ctbr_body_rate_limit": env.ctbr_body_rate_limit,
+        "ctbr_thrust_min": env.ctbr_thrust_min,
+        "ctbr_thrust_max": env.ctbr_thrust_max,
+        "ctbr_omega_time_constant": env.ctbr_omega_time_constant,
+        "ctbr_thrust_time_constant": env.ctbr_thrust_time_constant,
+        "ctbr_linear_drag": env.ctbr_linear_drag,
         "random_rotation": env.random_rotation,
         "cam_angle": env.cam_angle,
         "gap": env.gap,
@@ -277,6 +327,9 @@ def export_scene_snapshot(
         "p_old": cpu_clone(env.p_old[0]),
         "max_speed": cpu_clone(env.max_speed[0]),
         "margin": cpu_clone(env.margin[0]),
+        "mass": cpu_clone(env.mass[0]),
+        "omega": cpu_clone(env.omega[0]),
+        "collective_thrust": cpu_clone(env.collective_thrust[0]),
         "pitch_ctl_delay": cpu_clone(env.pitch_ctl_delay[0]),
         "yaw_ctl_delay": cpu_clone(env.yaw_ctl_delay[0]),
         "thr_est_error": cpu_clone(env.thr_est_error[0]),

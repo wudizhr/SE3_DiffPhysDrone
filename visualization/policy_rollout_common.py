@@ -68,6 +68,14 @@ def create_env_from_snapshot(snapshot: Dict[str, Any], config: Dict[str, Any], d
         target=snapshot.get("p_target"),
         max_speed=float(snapshot.get("max_speed", 4.0)),
         margin=float(snapshot.get("margin", 0.25)),
+        quad_mass=float(snapshot.get("quad_mass", config.get("quad_mass", 1.0))),
+        quad_mass_randomization=0.0,
+        ctbr_body_rate_limit=float(snapshot.get("ctbr_body_rate_limit", config.get("ctbr_body_rate_limit", 8.0))),
+        ctbr_thrust_min=float(snapshot.get("ctbr_thrust_min", config.get("ctbr_thrust_min", 0.0))),
+        ctbr_thrust_max=float(snapshot.get("ctbr_thrust_max", config.get("ctbr_thrust_max", 30.0))),
+        ctbr_omega_time_constant=float(snapshot.get("ctbr_omega_time_constant", config.get("ctbr_omega_time_constant", 0.03))),
+        ctbr_thrust_time_constant=float(snapshot.get("ctbr_thrust_time_constant", config.get("ctbr_thrust_time_constant", 0.05))),
+        ctbr_linear_drag=float(snapshot.get("ctbr_linear_drag", config.get("ctbr_linear_drag", 0.0))),
         gap=bool(snapshot.get("gap", False)),
         gap_prob=float(snapshot.get("gap_prob", 0.0)),
         n_balls=int(snapshot.get("n_balls", 30)),
@@ -98,6 +106,12 @@ def create_env_from_snapshot(snapshot: Dict[str, Any], config: Dict[str, Any], d
 
     env.max_speed = as_scalar_tensor(snapshot.get("max_speed", [[4.0]]), device)
     env.margin = as_scalar_tensor(snapshot.get("margin", [0.25]), device, shape=(1,))
+    env.mass = as_scalar_tensor(snapshot.get("mass", [snapshot.get("quad_mass", 1.0)]), device)
+    env.quad_mass = float(env.mass.reshape(-1)[0].item())
+    env.quad_mass_randomization = float(snapshot.get("quad_mass_randomization", 0.0))
+    env.omega = as_1_batch_tensor(snapshot.get("omega", [0.0, 0.0, 0.0]), device)
+    default_collective_thrust = float(env.mass.reshape(-1)[0].item()) * -float(env.g_std[2].item())
+    env.collective_thrust = as_scalar_tensor(snapshot.get("collective_thrust", [default_collective_thrust]), device)
     env.pitch_ctl_delay = as_scalar_tensor(snapshot.get("pitch_ctl_delay", [[12.0]]), device)
     env.yaw_ctl_delay = as_scalar_tensor(snapshot.get("yaw_ctl_delay", [[6.0]]), device)
     env.thr_est_error = as_scalar_tensor(snapshot.get("thr_est_error", [1.0]), device, shape=(1,))
@@ -141,6 +155,7 @@ def load_model(checkpoint_path: Path, no_odom: bool, device: torch.device, confi
         depth_pool_kernel=int(config.get("depth_pool_kernel", depth_pool_kernel_for_model())),
         hidden_dim=int(config.get("hidden_dim", 192)),
         action_mode=str(config.get("action_mode", "accel_velocity")),
+        backend_name=str(config.get("backend_name", "point_mass")),
     )
     model = create_model(model_config).to(device).eval()
     state_dict = torch.load(checkpoint_path, map_location=device)

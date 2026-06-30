@@ -32,4 +32,5 @@ sensor:
 
 model:
   name: pm_model
+  backend_name: point_mass
   action_mode: accel_velocity

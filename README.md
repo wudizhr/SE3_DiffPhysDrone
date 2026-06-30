@@ -10,6 +10,7 @@ SE3_Diff/
   env/                     # CUDA 批量无人机环境封装
   model/                   # 策略网络定义
   sensors/                 # 传感器输入与 observation 构造扩展点
+  env/dynamics/            # 动力学后端抽象，当前 point-mass 行为由这里统一封装
   se3diff_config/          # 训练与可视化共享配置系统
   src/                     # quadsim_cuda 扩展源码
   tests/                   # 回归测试
@@ -51,10 +52,10 @@ cd /home/zhr/SE3_Diff
 验证扩展是否安装到当前环境：
 
 ```bash
-python3 -c "import quadsim_cuda; print(quadsim_cuda.__file__); print(hasattr(quadsim_cuda, 'render_mid360'))"
+python3 -c "import quadsim_cuda; print(quadsim_cuda.__file__); print(hasattr(quadsim_cuda, 'render_mid360')); print(hasattr(quadsim_cuda, 'run_ctbr_forward'))"
 ```
 
-期望输出路径指向 `/home/zhr/SE3_Diff/src/quadsim_cuda...so`，并且第二行是 `True`。
+期望输出路径指向 `/home/zhr/SE3_Diff/src/quadsim_cuda...so`，并且后两行都是 `True`。
 
 如果 Python 环境中没有 `python` 命令，请使用 `python3`。
 
@@ -82,6 +83,71 @@ train:
 train:
   use_future_collision_samples: false
 ```
+
+如果希望训练早期先用少量障碍物，随后逐步增加到最终场景复杂度，可以在 `env` 下启用障碍物课程学习。`n_balls/n_voxels/n_cyl/n_cyl_h/n_ground_voxels` 仍表示最终数量，`start_counts` 表示训练初期数量：
+
+```yaml
+env:
+  n_balls: 20
+  n_voxels: 20
+  n_cyl: 0
+  n_cyl_h: 2
+  n_ground_voxels: 10
+  obstacle_curriculum:
+    enabled: true
+    start_iter: 0
+    end_iter: 12000
+    start_counts:
+      n_balls: 2
+      n_voxels: 2
+      n_cyl: 0
+      n_cyl_h: 0
+      n_ground_voxels: 1
+```
+
+训练循环会在每次 `env.reset()` 前按当前 iteration 计算有效障碍物数量；可视化和离线场景默认不传训练 step，因此使用最终数量，方便复现。
+
+### Loss 扩展
+
+训练 loss 使用 `train/loss/` 下的扩展结构：
+
+- `LossContext`：把一次 rollout 的 history 整理成 tensor。
+- `LossRegistry`：根据配置启用 loss term，并统一加权求和。
+- `train/loss/terms/`：每个文件放一类 loss，例如速度、避障、控制平滑。
+
+旧配置中的 `coef_*` 字段仍然可用。推荐新实验逐步改成 `terms` 写法：
+
+```yaml
+loss:
+  terms:
+    velocity_tracking:
+      weight: 1.0
+      enabled: true
+    collision:
+      weight: 7.5
+      enabled: true
+    action_l2:
+      weight: 0.01
+      enabled: true
+    yaw_alignment:
+      weight: 0.1
+      enabled: true
+    thrust_regularization:
+      weight: 0.01
+      enabled: true
+      curriculum:
+        start_weight: 0.0
+        end_weight: 0.01
+        start_iter: 1000
+        end_iter: 10000
+    ctbr_smoothness:
+      weight: 0.01
+      enabled: true
+```
+
+`curriculum` 是可选字段，用来让指定 loss 的实际权重随训练迭代线性变化；没有该字段时直接使用 `weight`。
+
+`yaw_alignment` 对应 `loss_yaw_alignment = mean(1 - x_body · v_unit)`，用于鼓励机体 x 轴和实际速度方向对齐。`thrust_regularization` 对应 `mean(|T / mass - g|)`，用于惩罚 CTBR 总推力偏离悬停加速度；`ctbr_smoothness` 对应 `mean(||omega||) + mean(||u_t - u_{t-1}||)`，用于抑制角速度和控制跳变。新增 loss 时，在 `train/loss/terms/` 中继承 `LossTerm`，实现 `compute(context)`，再在 `train/loss/registry.py` 的 `TERM_CLASSES` 注册名字。普通状态 history 由训练循环收集；深度图、MID360 伪图像、隐藏状态等大 tensor 由 loss term 的 `required_history` 显式声明后按需收集。
 
 训练输出会写入：
 
@@ -116,9 +182,20 @@ tensorboard --logdir checkpoints
 项目已经预留传感器和模型工厂骨架：
 
 - `sensors/`：负责把不同传感器输入整理成模型 observation。当前接入 `depth_odom`，`mid360` 已实现点云到单通道距离伪图像的预处理方法，后续可接入专用点云/伪图像策略模型。
-- `model/factory.py`：负责根据 YAML 中的 `model.name` 创建模型。当前接入 `pm_model`，`se3_model` 仅作为未来选项保留，等待 CTBR 控制策略完成后再接入。
+- `model/factory.py`：负责根据 YAML 中的 `model.name` 创建模型。当前接入 `pm_model`、`depth_se3_model`、`mid360_cnn_model`、`mid360_se3_model`；`depth_se3_model` 使用 `depth_odom` 深度图和里程计状态输出 CTBR 控制，配置入口是 `configs/depth_se3.yaml`。
 - `control/`：负责把模型输出的原始 action 转成环境可执行控制量。当前 `accel_velocity` adapter 保持原 point-mass 策略行为不变，后续 CTBR 控制应从这里接入。
-- `rollout/PolicyRunner`：集中策略播放时的 observation 构造、模型调用和 action adapter 调用，避免训练与可视化各写一套 rollout。
+- `env/dynamics/`：负责把环境推进逻辑封装成统一后端。当前 `PointMassDynamics` 是对 `Env.run(...)` 的薄包装，`CtbrDynamics` 是对 `Env.run_ctbr(...)` 的薄包装；训练和可视化都会从 `model.backend_name` 选择后端并通过 `DynamicsBackend.step(...)` 调用。
+- `rollout/PolicyRunner`：集中策略播放时的 observation 构造、模型调用、action adapter 调用和 dynamics backend 调用，避免训练与可视化各写一套 rollout。
+
+无人机质量属于环境物理参数，配置在 `env.quad_mass`；训练时可用 `env.quad_mass_randomization` 做质量随机化，CTBR 后端会从 `env.mass` 读取实际 batch 质量。
+
+CTBR 刚体动力学已经接入 CUDA 可微核：
+
+- CUDA 文件：`src/dynamics_ctbr_kernel.cu`。
+- Python autograd 包装：`env.env_cuda.RunCtbrFunction`。
+- 扩展符号：`quadsim_cuda.run_ctbr_forward` 和 `quadsim_cuda.run_ctbr_backward`。
+- 当前前向包括一阶角速度/推力响应、Rodrigues 姿态积分、推力加速度、重力、外部扰动和线性阻力；暂不包含 `airmode_av2a`。
+- 如果扩展尚未重编译或不在 CUDA tensor 上运行，`Env.run_ctbr()` 会回退到 PyTorch 参考实现。
 
 新增实验时优先复制 YAML，并修改 `sensor` 和 `model` 分组，而不是复制训练脚本。
 

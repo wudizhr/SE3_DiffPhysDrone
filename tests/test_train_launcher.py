@@ -805,13 +805,20 @@ def test_training_loss_calculation_is_split_into_loss_package():
 
     main_source = (ROOT / "train" / "main_cuda.py").read_text()
     loss_source = (ROOT / "train" / "loss" / "training_loss.py").read_text()
+    registry_source = (ROOT / "train" / "loss" / "registry.py").read_text()
+    obstacle_source = (ROOT / "train" / "loss" / "terms" / "obstacle.py").read_text()
+    velocity_source = (ROOT / "train" / "loss" / "terms" / "velocity.py").read_text()
 
-    assert "from train.loss import compute_training_loss" in main_source
-    assert "compute_training_loss(" in main_source
+    assert "from train.loss import LossContext, build_loss_registry" in main_source
+    assert "loss_registry = build_loss_registry(config.loss)" in main_source
+    assert "loss_registry.compute(" in main_source
     assert "def barrier" not in main_source
     assert "loss_v = F.smooth_l1_loss" not in main_source
     assert "loss_collide = F.softplus" not in main_source
 
-    assert "def barrier" in loss_source
-    assert "loss_v = F.smooth_l1_loss" in loss_source
-    assert "loss_collide = F.softplus" in loss_source
+    assert "LossContext.from_rollout" in loss_source
+    assert "build_loss_registry" in loss_source
+    assert "class LossRegistry" in registry_source
+    assert "def barrier" in obstacle_source
+    assert "F.smooth_l1_loss" in velocity_source
+    assert "F.softplus" in obstacle_source

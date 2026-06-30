@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict
 
 from control import create_action_adapter
+from env.dynamics import create_dynamics_backend
 
 
 @dataclass
@@ -16,6 +17,7 @@ class PolicyRunnerConfig:
     deterministic_visualization: bool = True
     sensor_name: str = "depth_odom"
     action_mode: str = "accel_velocity"
+    backend_name: str = "point_mass"
 
 
 class PolicyRunner:
@@ -25,12 +27,25 @@ class PolicyRunner:
         self.config = config
         self.observation_builder = observation_builder
         self.action_adapter = create_action_adapter(config.action_mode)
+        self.dynamics_backend = create_dynamics_backend(config.backend_name)
         self.hidden_state = None
-        self.act_buffer = [env.act.clone(), env.act.clone()]
+        initial_control = self.action_adapter.initial_control(env)
+        self.act_buffer = [initial_control.clone(), initial_control.clone()]
 
     def reset_model(self) -> None:
         self.hidden_state = None
         self.model.reset()
+
+    @staticmethod
+    def unpack_model_output(output, previous_hidden_state):
+        if not isinstance(output, tuple):
+            raise TypeError("policy model must return a tuple")
+        if len(output) == 3:
+            return output
+        if len(output) == 2:
+            action, hidden_state = output
+            return action, None, hidden_state
+        raise ValueError(f"policy model returned {len(output)} values, expected 2 or 3")
 
     def step(self, step_idx: int) -> Dict[str, Any]:
         import torch
@@ -40,7 +55,7 @@ class PolicyRunner:
         depth, _ = env.render(self.config.ctl_dt)
         target_v_raw = env.p_target - env.p.detach()
         yaw_correction_vec = target_v_raw if self.config.yaw_target_correction else env.v
-        env.run(self.act_buffer[step_idx], self.config.ctl_dt, yaw_correction_vec)
+        self.dynamics_backend.step(env, self.act_buffer[step_idx], self.config.ctl_dt, yaw_correction_vec)
 
         R, state, local_v, target_v = self.build_state(
             target_v_raw,
@@ -53,7 +68,7 @@ class PolicyRunner:
                 include_debug_outputs=True,
             )
             obs = self.observation_builder.build(sensor_inputs=sensor_inputs, state=state)
-            action, _, self.hidden_state = self.model(obs, hx=self.hidden_state)
+            action, _, self.hidden_state = self.unpack_model_output(self.model(obs, hx=self.hidden_state), self.hidden_state)
             pooled = obs["mid360_pseudo_image"]
             mid360_pseudo_image = pooled
             mid360_points = sensor_inputs.get("mid360_points")
@@ -66,7 +81,7 @@ class PolicyRunner:
                 self.config.depth_pool_kernel,
                 self.config.depth_pool_kernel,
             )
-            action, _, self.hidden_state = self.model(pooled, state, self.hidden_state)
+            action, _, self.hidden_state = self.unpack_model_output(self.model(pooled, state, self.hidden_state), self.hidden_state)
             mid360_pseudo_image = None
             mid360_points = None
             mid360_world_points = None

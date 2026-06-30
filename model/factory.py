@@ -7,7 +7,9 @@ from se3diff_config.schema import ModelConfig
 
 MODEL_REGISTRY = {
     "pm_model": "model.pm_model.Model",
+    "depth_se3_model": "model.depth_se3_model.Model",
     "mid360_cnn_model": "model.mid360_cnn_model.Model",
+    "mid360_se3_model": "model.mid360_se3_model.Model",
     "se3_model": None,
 }
 
@@ -29,7 +31,7 @@ def create_model(config: ModelConfig):
         Model = resolve_model_class(config)
         dim_obs = 10 if config.dim_obs is None else int(config.dim_obs)
         return Model(dim_obs, int(config.dim_action))
-    if config.name == "mid360_cnn_model":
+    if config.name in {"depth_se3_model", "mid360_cnn_model", "mid360_se3_model"}:
         Model = resolve_model_class(config)
         dim_obs = 10 if config.dim_obs is None else int(config.dim_obs)
         return Model(dim_obs=dim_obs, dim_action=int(config.dim_action), hidden_dim=int(config.hidden_dim))
